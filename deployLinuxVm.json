@@ -1,0 +1,357 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "tagValues": {
+      "type": "object",
+      "defaultValue": {
+        "Application": "Azure Platform",
+        "ApplicationID": "APP0007366",
+        "Owner": "adrien.lemiere@upm.com",
+        "CostCenter": "144849040"
+      }
+    },
+    "existingVirtualNetworkResourceGroup": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the resourceGroup for the existing virtual network to deploy the VM into."
+      }
+    },
+    "publicIp": {
+      "type": "string",
+      "defaultValue": "priv",
+      "allowedValues": [
+        "pip",
+        "priv"
+      ],
+      "metadata": {
+        "description": "Deploy public IP (pip) as well or only private IP (priv)."
+      }
+    },
+    "Trend": {
+      "type": "string",
+      "defaultValue": "Yes",
+      "allowedValues": [
+        "Yes",
+        "No"
+      ]
+    },
+    "hardening": {
+      "type": "string",
+      "defaultValue": "No",
+      "allowedValues": [
+        "Yes",
+        "No"
+      ],
+      "metadata": {
+        "description": "run hardening"
+      }
+    },
+    "runCustomExtension": {
+      "type": "string",
+      "defaultValue": "No",
+      "allowedValues": [
+        "Yes",
+        "No"
+      ]
+    },
+    "existingVNETName": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet name"
+      }
+    },
+    "existingSubnetName": {
+      "type": "string",
+      "defaultValue": "Subnet1",
+      "metadata": {
+        "description": "Subnet Name"
+      }
+    },
+    "lcladminUsername": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Local User for the Virtual Machine."
+      }
+    },
+    "lcladminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Local User Password for the Virtual Machine."
+      }
+    },
+    "DomainUserName": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Domain Service account."
+      }
+    },
+    "DomainUserPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Domain Service account Password."
+      }
+    },
+    "vmName": {
+      "type": "string",
+      "metadata": {
+        "description": "vmName"
+      }
+    },
+    "ubuntuOSVersion": {
+      "type": "string",
+      "defaultValue": "16.04-LTS",
+      "allowedValues": [
+        "16.04-LTS"
+      ],
+      "metadata": {
+        "description": "The Ubuntu version for the VM. This will pick a fully patched image of this given Windows version."
+      }
+    },
+    "ouPath": {
+      "type": "string",
+      "defaultValue": "OU=Z01,OU=AzureApplications,OU=UPM Servers,DC=griffin-domain,DC=net",
+      "metadata": {
+        "description": "ouPath"
+      }
+    },
+    
+
+    "fileUrl": {
+      "type": "string",
+      "defaultValue": "https://3w7x7ouwv7l6gsoftwarerep.blob.core.windows.net/upmsoftwarerepo",
+      "metadata": {
+        "description": "Fileurl for storage account holding custom execution data"
+      }
+    },
+    "storageSASToken": {
+      "type": "string",
+      "defaultValue": "?sv=2017-04-17&si=UPMAccessPolicy&sr=c&sig=7zRsq7WgoxfMVrJhkBUsyS4jBOooP%2FmBqpUYJS4pduA%3D",
+      "metadata": {
+        "description": "SASToken for storage account"
+      }
+    },
+    "scriptFileName": {
+      "type": "string",
+      "defaultValue": "install_upmapps.ps1",
+      "metadata": {
+        "description": "custom execution script name"
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D2s_v3",
+      "allowedValues": [
+        "Standard_F2s_v2",
+        "Standard_F4s_v2",
+        "Standard_F8s_v2",
+        "Standard_D2s_v3",
+        "Standard_D4s_v3",
+        "Standard_D8s_v3",
+        "Standard_D2_v3",
+        "Standard_D4_v3",
+        "Standard_D8_v3",
+        "Standard_E2s_v3",
+        "Standard_E4s_v3",
+        "Standard_E8s_v3",
+        "Standard_E2_v3",
+        "Standard_E4_v3",
+        "Standard_E8_v3"
+      ],
+      "metadata": {
+        "description": "VM Size"
+      }
+    },
+    "diskSizeGB": {
+      "type": "int",
+      "defaultValue": 128,
+      "allowedValues": [
+        64,
+        128,
+        256,
+        512,
+        1024,
+        2048,
+        4096
+      ],
+      "metadata": {
+        "description": "VM disk Size in GB "
+      }
+    },
+    "availabilitySetName": {
+      "type": "string",
+      "defaultValue": "WE-SST-Test",
+      "metadata": {
+        "description": "Availability Set Name"
+      }
+    }
+  },
+  "variables": {
+    "apiVersion": "2015-06-15",
+    "vnetId": "[resourceId(parameters('existingVirtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('existingVNETName'))]",
+    "storageAccountName": "[concat(uniquestring(resourceGroup().id), 'vmdiag')]",
+    "subnetRef": "[concat(variables('vnetId'), '/subnets/', parameters('existingSubnetName'))]",
+    "nicName": "[concat(parameters('vmName'), '-nic01')]",
+    "publicIPAddressName": "[concat(parameters('vmName'), '-nic01-pip0')]",
+    "ipConfigName": "[concat(parameters('vmName'), '-ipconfig')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[parameters('availabilitySetName')]",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "platformFaultDomainCount": 2,
+        "platformUpdateDomainCount": 5,
+        "managed": true
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[variables('storageAccountName')]",
+      "apiVersion": "2016-01-01",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tagValues')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "properties": {}
+    },
+    {
+      "condition": "[equals(parameters('publicIp'), 'pip')]",
+      "apiVersion": "2016-03-30",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[variables('publicIPAddressName')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tagValues')]",
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      }
+    },
+    {
+      "condition": "[equals(parameters('publicIp'), 'pip')]",
+      "apiVersion": "2016-03-30",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat(variables('nicName'),'-pip')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tagValues')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses/', variables('publicIPAddressName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "[variables('ipConfigName')]",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('publicIPAddressName'))]"
+              },
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[equals(parameters('publicIp'), 'priv')]",
+      "apiVersion": "2016-03-30",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat(variables('nicName'),'-priv')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tagValues')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "[variables('ipConfigName')]",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2017-03-30",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[parameters('vmName')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tagValues')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/availabilitySets/', parameters('availabilitySetName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces/', concat(variables('nicName'),'-',parameters('publicIp')))]"
+      ],
+      "properties": {
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets',parameters('availabilitySetName'))]"
+        },
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('vmName')]",
+          "adminUsername": "[parameters('lcladminUsername')]",
+          "adminPassword": "[parameters('lcladminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "[parameters('ubuntuOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage"
+          },
+          "dataDisks": [
+            {
+              "diskSizeGB": "[parameters('diskSizeGB')]",
+              "lun": 0,
+              "createOption": "Empty"
+            }
+          ]
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat(variables('nicName'),'-',parameters('publicIp')))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "condition": "[equals(parameters('runCustomExtension'), 'Yes')]",
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(parameters('vmName'),'/',parameters('vmName'),'-cse')]",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publisher": "Microsoft.Azure.Extensions",
+        "type": "CustomScript",
+        "typeHandlerVersion": "2.0",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "fileUris": [
+            "[concat(parameters('fileUrl'), '/', parameters('scriptFileName'), parameters('storageSASToken'))]"
+          ]
+        },
+        "protectedSettings": {
+          "commandToExecute": "[concat('./linuxinstall.sh', ' ',parameters('Trend'), ' ', parameters('hardening'), ' ',parameters('vmName'))]"
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', parameters('vmName'))]"
+        
+      ]
+    }
+  ]
+}
